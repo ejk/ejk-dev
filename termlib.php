@@ -10,7 +10,7 @@
  * TermLib Class allows terminal commands to the III server
  */
 class TermLib {
-  private $cli;
+  private $verbose;
   private $host;
   private $user;
   private $pass;
@@ -19,17 +19,27 @@ class TermLib {
   private $resource;
   private $stdio;
 
+  public function __construct($hostname, $username, $password, $initials, $initials_pass, $verbose = FALSE) {
+    $this->host = $hostname;
+    $this->user = $username;
+    $this->pass = $password;
+    $this->init = $initials;
+    $this->init_pass = $initials_pass;
+    if ($verbose) $this->verbose = TRUE; // any true value assigns as TRUE
+    if ($this->verbose) echo "TermLib Constructor\n";
+  }
+
   private function login() {
     if (!($this->resource = @ssh2_connect($this->host))) {
-      if ($this->cli) echo "ssh2_connect(" . $this->host . ") FAIL\n";
+      if ($this->verbose) echo "ssh2_connect(" . $this->host . ") FAIL\n";
       return 'ERR';
     } else {
       if (!@ssh2_auth_password($this->resource, $this->user, $this->pass)) {
-        if ($this->cli) echo "ssh2_auth_password(" . $this->user . "," . $this->pass . ") FAIL\n";
+        if ($this->verbose) echo "ssh2_auth_password(" . $this->user . "," . $this->pass . ") FAIL\n";
         return 'ERR';
       } else {
         if (!($this->stdio = @ssh2_shell($this->resource, "xterm"))) {
-          if ($this->cli) echo "ssh2_shell() FAIL\n";
+          if ($this->verbose) echo "ssh2_shell() FAIL\n";
           return 'ERR';
         }
       }
@@ -77,16 +87,6 @@ class TermLib {
     $string = preg_replace('%\x1B%s', '', $string);
     return $string;
   }
-
-  public function __construct($hostname, $username, $password, $initials, $initials_pass) {
-    $this->cli = (php_sapi_name() == "cli" ? TRUE : FALSE);
-    $this->host = $hostname;
-    $this->user = $username;
-    $this->pass = $password;
-    $this->init = $initials;
-    $this->init_pass = $initials_pass;
-    if ($this->cli) echo "TermLib Constructor\n";
-  }
   
   /**
   * Retrieve MARC field information for a bib record
@@ -94,10 +94,10 @@ class TermLib {
   public function get_bib_info($bnum) {
     $bib_record = array();
     $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
-    if ($this->cli) echo "Grabbing Bib Info for $bnum\n";
+    if ($this->verbose) echo "Grabbing Bib Info for $bnum\n";
     
     if ($this->login()) {
-      if ($this->cli) echo "SSH LOGIN ERROR\n";
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
       return "SSH LOGIN ERROR";
     }
     
@@ -113,7 +113,7 @@ class TermLib {
     
     foreach ($trans_arr as $cmd) {
       $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->cli) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
+      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
       if ($trans['error']) {
         $status = "ERROR";
         $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
@@ -154,13 +154,12 @@ class TermLib {
    * You MUST enter the field code number as returned by get_bib_info()
    */
   public function set_bib_info($bnum, $code, $marc, $value) {
-    $bib_record = array();
     $status = "SUCCESS";
     $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
-    if ($this->cli) echo "UPDATING BIB $bnum\n";
+    if ($this->verbose) echo "UPDATING BIB $bnum\n";
     
     if ($this->login()) {
-      if ($this->cli) echo "SSH LOGIN ERROR\n";
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
       return "SSH LOGIN ERROR";
     }
     
@@ -181,7 +180,7 @@ class TermLib {
     
     foreach ($trans_arr as $cmd) {
       $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->cli) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
+      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
       if ($trans['error']) {
         $status = "ERROR";
         $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
@@ -189,6 +188,66 @@ class TermLib {
     }
     $this->disconnect();
     return array('status' => $status, 'info' => $info, 'trans' => $trans);
+  }
+  
+  /**
+   * add_bib_info inserts a new field into the Bib record as indicated
+   * by the tag, code and value
+   *
+   * Example tags:
+   * a AUTHOR        d SUBJECT       g GOV DOC #     k TOC DATA      o BIB UTIL #
+   * b ADD AUTHOR    e EDITION       h LIB HAS       l LCCN          p PUB INFO
+   * c CALL #        f VENDOR INF    i STANDARD #    n NOTE          r DESCRIPT
+   * 
+   * s SERIES        w RELATED TO    z CONT'D BY
+   * t TITLE         x CONTINUES
+   * u ADD TITLE     y MISC
+   */
+  public function add_bib_info($bnum, $tag, $code, $value) {
+    $status = "SUCCESS";
+    $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
+    if ($this->verbose) echo "ADDING TO BIB $bnum\n";
+    
+    if ($this->login()) {
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
+      return "SSH LOGIN ERROR";
+    }
+    
+    $trans_arr = array(
+      array('input' => '', 'expect' => 'MAIN MENU'),
+      array('input' => 'd', 'expect' => 'CATALOG DATABASE'),
+      array('input' => 'u', 'expect' => 'key your initials'),
+      array('input' => $this->init . PHP_EOL, 'expect' => 'key your password'),
+      array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC'),
+      array('input' => 'b', 'expect' => 'want to update'),
+      array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number'),
+      array('input' => 'i', 'expect' => 'new field'),
+      array('input' => $tag, 'expect' => 'MARC'),
+      array('input' => $marc . PHP_EOL, 'expect' => 'Key new data'),
+      array('input' => $value . PHP_EOL, 'expect' => 'duplicate checking'),
+      array('input' => 'n', 'expect' => 'Key its number'),
+      array('input' => 'q', 'expect' => 'MAKE changes'),
+      array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC'),
+    );
+    
+    foreach ($trans_arr as $cmd) {
+      $trans = $this->transmit($cmd['input'], $cmd['expect']);
+      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
+      if ($trans['error']) {
+        $status = "ERROR";
+        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
+      }
+    }
+    $this->disconnect();
+    return array('status' => $status, 'info' => $info, 'trans' => $trans);
+  }
+  
+  /**
+   * delete_bib_info deletes the field from the Bib record
+   * as indicated by its corresponding code number
+   */
+  public function delete_bib_info($bnum, $code) {
+    return $this->set_bib_info($bnum, $code, "999", '');
   }
   
   /**
@@ -202,17 +261,27 @@ class TermLib {
       if ($field['value'] == $old_text) {
         // found the field to update
         $this->set_bib_info($bnum, $code, $field['marc'], $new_text);
-        if ($this->cli) echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
+        if ($this->verbose) echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
         $found = TRUE;
         break;
       }
     }
     if (!$found) {
-      if ($this->cli) echo "FIELD TEXT NOT FOUND:" . $old_text . " in Bib: " . $bnum . "\n";
+      if ($this->verbose) echo "FIELD TEXT NOT FOUND:" . $old_text . " in Bib: " . $bnum . "\n";
       return "ERROR: FIELD TEXT NOT FOUND";
     }
   }
   
+  public function get_marc_field($bnum, $marc) {
+    $matches = array();
+    foreach(self::get_bib_info($bnum) as $code => $field) {
+      if (substr($field['marc'], 0, 3) == $marc) {
+        $matches[$code] = $field;
+      }
+    }
+    return $matches;
+  }
+
 } // End of class TermLib
 
 ?>
