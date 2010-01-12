@@ -269,7 +269,6 @@ class TermLib {
     }
     
     $trans_arr = array();
-    
     $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
     $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
     $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
@@ -277,14 +276,8 @@ class TermLib {
     $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
     $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
     $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
-    
-    if ($marc) {
-      $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
-      $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    } else {
-      $trans_arr[] = array('input' => $code, 'expect' => 'Key new data');
-    }
-    
+    $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
     $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'Key its number');
     $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
     $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
@@ -317,28 +310,16 @@ class TermLib {
     $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'ITEM');
     $trans_arr[] = array('input' => 'i', 'expect' => 'want to update');
     $trans_arr[] = array('input' => $inum . PHP_EOL, 'expect' => 'Key its number');
-
-    if ($marc) {
-      $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
-      $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    } else {
-      $trans_arr[] = array('input' => $code, 'expect' => 'Key new data');
-    }
-    
+    $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
     $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'Key its number');
     $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
     $trans_arr[] = array('input' => 'm', 'expect' => 'ITEM');
     
-    foreach ($trans_arr as $cmd) {
-      $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
-      if ($trans['error']) {
-        $status = "ERROR";
-        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
-      }
-    }
+    $trans = $this->transmit_loop($trans_arr);
     $this->disconnect();
-    return array('status' => $status, 'info' => $info, 'trans' => $trans);
+    
+    return $trans;
   }
   
   /**
@@ -364,27 +345,26 @@ class TermLib {
       return "SSH LOGIN ERROR";
     }
     
-    $trans_arr = array(
-      array('input' => '', 'expect' => 'MAIN MENU'),
-      array('input' => 'd', 'expect' => 'CATALOG DATABASE'),
-      array('input' => 'u', 'expect' => 'key your initials'),
-      array('input' => $this->init . PHP_EOL, 'expect' => 'key your password'),
-      array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC'),
-      array('input' => 'b', 'expect' => 'want to update'),
-      array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number'),
-      array('input' => 'i', 'expect' => 'new field'),
-      array('input' => $tag, 'expect' => 'MARC'),
-      array('input' => $marc . PHP_EOL, 'expect' => 'Key new data'),
-      array('input' => $value . PHP_EOL, 'expect' => 'duplicate checking'),
-      array('input' => 'n', 'expect' => 'Key its number'),
-      array('input' => 'q', 'expect' => 'MAKE changes'),
-      array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC'),
-    );
+    $trans_arr = array();
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
+    $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'i', 'expect' => 'new field');
+    $trans_arr[] = array('input' => $tag, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'duplicate checking');
+    $trans_arr[] = array('input' => 'n', 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
     
     $trans = $this->transmit_loop($trans_arr);
-
     $this->disconnect();
-    return array($trans);
+    
+    return $trans;
   }
   
   /**
@@ -406,7 +386,9 @@ class TermLib {
       if ($field['value'] == $old_text) {
         // found the field to update
         $this->edit_bib_info($bnum, $code, $field['marc'], $new_text);
-        if ($this->verbose) echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
+        if ($this->verbose) {
+          echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
+        }
         $found = TRUE;
         break;
       }
