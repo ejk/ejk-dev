@@ -261,7 +261,7 @@ class TermLib {
    * Update a bib record with the given text
    * You MUST enter the field code number as returned by get_bib_info()
    */
-  public function set_bib_info($bnum, $code, $marc, $value) {
+  public function edit_bib_info($bnum, $code, $marc, $value) {
     $status = "SUCCESS";
     $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
     if ($this->verbose) echo "UPDATING BIB $bnum\n";
@@ -285,6 +285,52 @@ class TermLib {
       array('input' => 'q', 'expect' => 'MAKE changes'),
       array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC'),
     );
+    
+    foreach ($trans_arr as $cmd) {
+      $trans = $this->transmit($cmd['input'], $cmd['expect']);
+      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
+      if ($trans['error']) {
+        $status = "ERROR";
+        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
+      }
+    }
+    $this->disconnect();
+    return array('status' => $status, 'info' => $info, 'trans' => $trans);
+  }
+  
+  /**
+   * Update an item record with the given text
+   * You MUST enter the field code number as returned by get_item_info()
+   */
+  public function edit_item_info($inum, $code, $marc, $value) {
+    $status = "SUCCESS";
+    $inum = ".i" . substr(preg_replace('/[^0-9]/', '', $inum), 0, 7) . "a";
+    if ($this->verbose) echo "UPDATING ITEM $inum\n";
+    
+    if ($this->login()) {
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
+      return "SSH LOGIN ERROR";
+    }
+    
+    $trans_arr = array();
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'ITEM');
+    $trans_arr[] = array('input' => 'i', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $inum . PHP_EOL, 'expect' => 'Key its number');
+
+    if ($marc) {
+      $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
+      $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    } else {
+      $trans_arr[] = array('input' => $code, 'expect' => 'Key new data');
+    }
+    
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'ITEM');
     
     foreach ($trans_arr as $cmd) {
       $trans = $this->transmit($cmd['input'], $cmd['expect']);
@@ -355,7 +401,7 @@ class TermLib {
    * as indicated by its corresponding code number
    */
   public function delete_bib_info($bnum, $code) {
-    return $this->set_bib_info($bnum, $code, "999", '');
+    return $this->edit_bib_info($bnum, $code, "999", '');
   }
   
   /**
