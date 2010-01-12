@@ -125,20 +125,43 @@ class TermLib {
       preg_match("/Choose one \(1-([0-9]{1,3})/", $trans['unfiltered'], $max_code_match);
       $max_code = $max_code_match[1];
       while(!$last_code_found) {
-        preg_match_all("/([0-9]{2}) ([a-zA-Z0-9]{3,9}) (.*)/", $trans['result'], $matches);
-        if ($matches[0]) {
-          foreach ($matches[1] as $index => $code) {
-            $marc = $matches[2][$index];
-            $value = $matches[3][$index];
-            $marc .= trim(substr($value, 0, 4));
-            $value = trim(substr($value, 4));
-            
-            if (intval($marc)) {
-              $bib_record[$code] = array('marc' => $marc, 'value' => $value);
+        $lines = preg_split("[\n|\r]", $trans['result']);
+        foreach($lines as $line) {
+          if (preg_match('/^([0-9]{2}) (.{16})([0-9]{2}) (.{16})/', $line)) {
+            // Mutiple entries on the same line
+            preg_match_all('/([0-9]{2}) (.{16})/', $line, $multicodes);
+            foreach ($multicodes[1] as $index => $code) {
+              $split = strpos($multicodes[2][$index], ':');
+              $field = substr($multicodes[2][$index], 0, $split);
+              $value = trim(substr($multicodes[2][$index], $split+1));
+              $bib_record[$code] = array('field' => $field, 'value' => $value);
+              if ($code == $max_code) {
+                $last_code_found = TRUE;
+              }
             }
-            
+          } else if (preg_match('/([0-9]{2}) ([0-9 ]{3,7}) (.*)/', $line, $marcdata)) {
+            // marc number fields
+            $code = $marcdata[1];
+            $marc = trim($marcdata[2]);
+            $value = trim($marcdata[3]);
+            $bib_record[$code] = array('field' => $marc, 'value' => $value);
             if ($code == $max_code) {
               $last_code_found = TRUE;
+            }
+          } else if (preg_match('/([0-9]{2}) ([A-Z ]{3,12}) (.*)/', $line, $fielddata)) {
+            // other fields on a single line
+            $code = $fielddata[1];
+            $field = trim($fielddata[2]);
+            $value = trim($fielddata[3]);
+            $bib_record[$code] = array('field' => $field, 'value' => $value);
+            if ($code == $max_code) {
+              $last_code_found = TRUE;
+            }
+          } else if (preg_match('/[ ]{11}(.*)/', $line, $extra)) {
+            // extra data that goes with the previous line
+            $extra = trim($extra[1]);
+            if ($code) {
+              $bib_record[$code]['value'] .= ' ' . $extra;
             }
           }
         }
@@ -222,7 +245,7 @@ class TermLib {
             // extra data that goes with the previous line
             $extra = trim($extra[1]);
             if ($code) {
-              $item_record[$code]['value'] .= $extra;
+              $item_record[$code]['value'] .= ' ' . $extra;
             }
           }
         }
