@@ -78,6 +78,17 @@ class TermLib {
     return $retarr;
   }
 
+  private function transmit_loop($commands) {
+    foreach ($commands as $cmd) {
+      $trans = $this->transmit($cmd['input'], $cmd['expect']);
+      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
+      if ($trans['error']) {
+        return array('status' => "ERROR", 'info' => $cmd['input'] . " EXPECTING " . $cmd['expect']);
+      }
+    }
+    return $trans;
+  }
+  
   private function disconnect() {
     fclose($this->stdio);
   }
@@ -111,16 +122,9 @@ class TermLib {
       array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number'),
     );
     
-    foreach ($trans_arr as $cmd) {
-      $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
-      if ($trans['error']) {
-        $status = "ERROR";
-        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
-      }
-    }
+    $trans = $this->transmit_loop($trans_arr);
   
-    if ($status != "ERROR") {
+    if ($trans['status'] != "ERROR") {
       // determine max code of editable fields
       preg_match("/Choose one \(1-([0-9]{1,3})/", $trans['unfiltered'], $max_code_match);
       $max_code = $max_code_match[1];
@@ -142,9 +146,9 @@ class TermLib {
           } else if (preg_match('/([0-9]{2}) ([0-9 ]{3,7}) (.*)/', $line, $marcdata)) {
             // marc number fields
             $code = $marcdata[1];
-            $marc = trim($marcdata[2]);
+            $marc = str_replace(' ', '', trim($marcdata[2]));
             $value = trim($marcdata[3]);
-            $bib_record[$code] = array('field' => $marc, 'value' => $value);
+            $bib_record[$code] = array('field' => $marc, 'marc' => $marc, 'value' => $value);
             if ($code == $max_code) {
               $last_code_found = TRUE;
             }
@@ -195,16 +199,9 @@ class TermLib {
       array('input' => $inum . PHP_EOL, 'expect' => 'Key its number'),
     );
     
-    foreach ($trans_arr as $cmd) {
-      $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
-      if ($trans['error']) {
-        $status = "ERROR";
-        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
-      }
-    }
+    $trans = $this->transmit_loop($trans_arr);
 
-    if ($status != "ERROR") {
+    if ($trans['status'] != "ERROR") {
       // determine max code of editable fields
       preg_match("/Choose one \(1-([0-9]{1,3})/", $trans['unfiltered'], $max_code_match);
       $max_code = $max_code_match[1];
@@ -226,9 +223,9 @@ class TermLib {
           } else if (preg_match('/([0-9]{2}) ([0-9 ]{3,7}) (.*)/', $line, $marcdata)) {
             // marc number fields
             $code = $marcdata[1];
-            $marc = trim($marcdata[2]);
+            $marc = str_replace(' ', '', trim($marcdata[2]));
             $value = trim($marcdata[3]);
-            $item_record[$code] = array('field' => $marc, 'value' => $value);
+            $item_record[$code] = array('field' => $marc, 'marc' => $marc, 'value' => $value);
             if ($code == $max_code) {
               $last_code_found = TRUE;
             }
@@ -271,31 +268,31 @@ class TermLib {
       return "SSH LOGIN ERROR";
     }
     
-    $trans_arr = array(
-      array('input' => '', 'expect' => 'MAIN MENU'),
-      array('input' => 'd', 'expect' => 'CATALOG DATABASE'),
-      array('input' => 'u', 'expect' => 'key your initials'),
-      array('input' => $this->init . PHP_EOL, 'expect' => 'key your password'),
-      array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC'),
-      array('input' => 'b', 'expect' => 'want to update'),
-      array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number'),
-      array('input' => $code, 'expect' => 'MARC'),
-      array('input' => $marc . PHP_EOL, 'expect' => 'Key new data'),
-      array('input' => $value . PHP_EOL, 'expect' => 'Key its number'),
-      array('input' => 'q', 'expect' => 'MAKE changes'),
-      array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC'),
-    );
+    $trans_arr = array();
     
-    foreach ($trans_arr as $cmd) {
-      $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
-      if ($trans['error']) {
-        $status = "ERROR";
-        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
-      }
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
+    $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
+    
+    if ($marc) {
+      $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
+      $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    } else {
+      $trans_arr[] = array('input' => $code, 'expect' => 'Key new data');
     }
+    
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
+    
+    $trans = $this->transmit_loop($trans_arr);
     $this->disconnect();
-    return array('status' => $status, 'info' => $info, 'trans' => $trans);
+    
+    return $trans;
   }
   
   /**
@@ -352,7 +349,7 @@ class TermLib {
    * a AUTHOR        d SUBJECT       g GOV DOC #     k TOC DATA      o BIB UTIL #
    * b ADD AUTHOR    e EDITION       h LIB HAS       l LCCN          p PUB INFO
    * c CALL #        f VENDOR INF    i STANDARD #    n NOTE          r DESCRIPT
-   * 
+   *
    * s SERIES        w RELATED TO    z CONT'D BY
    * t TITLE         x CONTINUES
    * u ADD TITLE     y MISC
@@ -384,16 +381,10 @@ class TermLib {
       array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC'),
     );
     
-    foreach ($trans_arr as $cmd) {
-      $trans = $this->transmit($cmd['input'], $cmd['expect']);
-      if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
-      if ($trans['error']) {
-        $status = "ERROR";
-        $info = $cmd['input'] . " EXPECTING " . $cmd['expect'];
-      }
-    }
+    $trans = $this->transmit_loop($trans_arr);
+
     $this->disconnect();
-    return array('status' => $status, 'info' => $info, 'trans' => $trans);
+    return array($trans);
   }
   
   /**
@@ -405,16 +396,16 @@ class TermLib {
   }
   
   /**
-   * update_bib_info searches the Bib record for the old field text
+   * replace_bib_text searches the Bib record for the old field text
    * If found, it replaces it with new text
    * returns a Error if old text is not found in the Bib record
    */
-  public function update_bib_info($bnum, $old_text, $new_text) {
+  public function replace_bib_text($bnum, $old_text, $new_text) {
     $bib = $this->get_bib_info($bnum);
     foreach ($bib as $code => $field) {
       if ($field['value'] == $old_text) {
         // found the field to update
-        $this->set_bib_info($bnum, $code, $field['marc'], $new_text);
+        $this->edit_bib_info($bnum, $code, $field['marc'], $new_text);
         if ($this->verbose) echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
         $found = TRUE;
         break;
