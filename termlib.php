@@ -399,7 +399,7 @@ class TermLib {
     }
   }
   
-  public function get_marc_field($bnum, $marc) {
+  public function get_bib_marc_field($bnum, $marc) {
     $matches = array();
     foreach(self::get_bib_info($bnum) as $code => $field) {
       if (substr($field['marc'], 0, 3) == $marc) {
@@ -409,6 +409,15 @@ class TermLib {
     return $matches;
   }
 
+  public function get_item_marc_field($inum, $marc) {
+    $matches = array();
+    foreach(self::get_item_info($inum) as $code => $field) {
+      if (substr($field['marc'], 0, 3) == $marc) {
+        $matches[$code] = $field;
+      }
+    }
+    return $matches;
+  }
 } // End of class TermLib
 
 ?>
