@@ -83,6 +83,7 @@ class TermLib {
       $trans = $this->transmit($cmd['input'], $cmd['expect']);
       if ($this->verbose) echo $cmd['input'] . ":" . $cmd['expect'] . "\n";
       if ($trans['error']) {
+        if ($this->verbose) echo "TRANSMIT LOOP ERROR: " . $cmd['input'] . " EXPECTING " . $cmd['expect'] . "\n";
         return array('status' => "ERROR", 'info' => $cmd['input'] . " EXPECTING " . $cmd['expect']);
       }
     }
@@ -278,11 +279,19 @@ class TermLib {
     $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
     $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
     $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'delete this field')) {
+      $trans_arr[] = array('input' => 'y', 'expect' => 'field');
+    } else if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
     $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
     $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
-    
     $trans = $this->transmit_loop($trans_arr);
+    
     $this->disconnect();
     
     return $trans;
@@ -372,12 +381,17 @@ class TermLib {
    * as indicated by its corresponding code number
    */
   public function delete_bib_info($bnum, $code) {
-    return $this->edit_bib_info($bnum, $code, "999", '');
+    $trans = $this->edit_bib_info($bnum, $code, '', '');
+    if ($this->verbose && $trans['status'] == "ERROR") {
+      echo "DELETE BIB INFO ERROR\n";
+    }
+    return $trans;
   }
   
   /**
-   * replace_bib_text searches the Bib record for the old field text
+   * replace_bib_text searches the Bib record for a field matching old field text exactly
    * If found, it replaces it with new text
+   * 
    * returns a Error if old text is not found in the Bib record
    */
   public function replace_bib_text($bnum, $old_text, $new_text) {
@@ -395,6 +409,31 @@ class TermLib {
     }
     if (!$found) {
       if ($this->verbose) echo "FIELD TEXT NOT FOUND:" . $old_text . " in Bib: " . $bnum . "\n";
+      return "ERROR: FIELD TEXT NOT FOUND";
+    }
+  }
+  
+  /**
+   * replace_item_text searches the Item record for a field matching old field text exactly
+   * If found, it replaces it with new text
+   * 
+   * returns a Error if old text is not found in the Bib record
+   */
+  public function replace_item_text($inum, $old_text, $new_text) {
+    $item = $this->get_item_info($bnum);
+    foreach ($item as $code => $field) {
+      if ($field['value'] == $old_text) {
+        // found the field to update
+        $this->edit_item_info($inum, $code, $field['marc'], $new_text);
+        if ($this->verbose) {
+          echo "UPDATED Item:" . $inum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
+        }
+        $found = TRUE;
+        break;
+      }
+    }
+    if (!$found) {
+      if ($this->verbose) echo "FIELD TEXT NOT FOUND:" . $old_text . " in Item: " . $inum . "\n";
       return "ERROR: FIELD TEXT NOT FOUND";
     }
   }
