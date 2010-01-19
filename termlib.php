@@ -377,6 +377,47 @@ class TermLib {
   }
   
   /**
+   * add_item_info inserts a new field into the Item record as indicated
+   * by the tag, code and value
+   *
+   * Example tags:
+   * a ITEM FIELD    d INV DATE      l OWN LOC       r RESER NOTE    y URL
+   * b BARCODE       e DRA CNUM      m MESSAGE       v VOLUME
+   * c CALL #        f DRA LASTTR    o DRA OWNING    x INT NOTE
+   */
+  public function add_item_info($inum, $tag, $code, $value) {
+    $status = "SUCCESS";
+    $inum = ".i" . substr(preg_replace('/[^0-9]/', '', $inum), 0, 7) . "a";
+    if ($this->verbose) echo "ADDING TO ITEM $inum\n";
+    
+    if ($this->login()) {
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
+      return "SSH LOGIN ERROR";
+    }
+    
+    $trans_arr = array();
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
+    $trans_arr[] = array('input' => 'i', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $inum . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'i', 'expect' => 'new field');
+    $trans_arr[] = array('input' => $tag, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'duplicate checking');
+    $trans_arr[] = array('input' => 'n', 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
+    
+    $trans = $this->transmit_loop($trans_arr);
+    $this->disconnect();
+    
+    return $trans;
+  }
+  
+  /**
    * delete_bib_info deletes the field from the Bib record
    * as indicated by its corresponding code number
    */
@@ -384,6 +425,18 @@ class TermLib {
     $trans = $this->edit_bib_info($bnum, $code, '', '');
     if ($this->verbose && $trans['status'] == "ERROR") {
       echo "DELETE BIB INFO ERROR\n";
+    }
+    return $trans;
+  }
+  
+  /**
+   * delete_item_info deletes the field from the Item record
+   * as indicated by its corresponding code number
+   */
+  public function delete_item_info($inum, $code) {
+    $trans = $this->edit_item_info($inum, $code, '', '');
+    if ($this->verbose && $trans['status'] == "ERROR") {
+      echo "DELETE ITEM INFO ERROR\n";
     }
     return $trans;
   }
