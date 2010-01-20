@@ -19,6 +19,9 @@ class TermLib {
   private $resource;
   private $stdio;
 
+  /**
+   * Constructor function sets the authentication variables
+   */
   public function __construct($hostname, $username, $password, $initials, $initials_pass, $verbose = FALSE) {
     $this->host = $hostname;
     $this->user = $username;
@@ -29,6 +32,9 @@ class TermLib {
     if ($this->verbose) echo "TermLib Constructor\n";
   }
 
+  /*============================================================================
+    PRIVATE FUNCTIONS
+  ============================================================================*/
   private function login() {
     if (!($this->resource = @ssh2_connect($this->host))) {
       if ($this->verbose) echo "ssh2_connect(" . $this->host . ") FAIL\n";
@@ -99,6 +105,10 @@ class TermLib {
     $string = preg_replace('%\x1B%s', '', $string);
     return $string;
   }
+  
+  /*============================================================================
+    Bibliographic Record Functions
+  ============================================================================*/
   
   /**
   * Retrieve MARC field information for a bib record
@@ -178,6 +188,149 @@ class TermLib {
   }
 
   /**
+   * add_bib_info inserts a new field into the Bib record as indicated
+   * by the tag, code and value
+   *
+   * Example tags:
+   * a AUTHOR        d SUBJECT       g GOV DOC #     k TOC DATA      o BIB UTIL #
+   * b ADD AUTHOR    e EDITION       h LIB HAS       l LCCN          p PUB INFO
+   * c CALL #        f VENDOR INF    i STANDARD #    n NOTE          r DESCRIPT
+   *
+   * s SERIES        w RELATED TO    z CONT'D BY
+   * t TITLE         x CONTINUES
+   * u ADD TITLE     y MISC
+   */
+  public function add_bib_info($bnum, $tag, $code, $value) {
+    $status = "SUCCESS";
+    $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
+    if ($this->verbose) echo "ADDING TO BIB $bnum\n";
+    
+    if ($this->login()) {
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
+      return "SSH LOGIN ERROR";
+    }
+    
+    $trans_arr = array();
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
+    $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => 'i', 'expect' => 'new field');
+    $trans_arr[] = array('input' => $tag, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
+    
+    $trans = $this->transmit_loop($trans_arr);
+    $this->disconnect();
+    
+    return $trans;
+  }
+
+  /**
+   * Update a bib record with the given text
+   * You MUST enter the field code number as returned by get_bib_info()
+   */
+  public function edit_bib_info($bnum, $code, $marc, $value) {
+    $status = "SUCCESS";
+    $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
+    if ($this->verbose) echo "UPDATING BIB $bnum\n";
+    
+    if ($this->login()) {
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
+      return "SSH LOGIN ERROR";
+    }
+    
+    $trans_arr = array();
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
+    $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'delete this field')) {
+      $trans_arr[] = array('input' => 'y', 'expect' => 'field');
+    } else if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
+    $trans = $this->transmit_loop($trans_arr);
+    
+    $this->disconnect();
+    
+    return $trans;
+  }
+  
+  /**
+   * delete_bib_info deletes the field from the Bib record
+   * as indicated by its corresponding code number
+   */
+  public function delete_bib_info($bnum, $code) {
+    $trans = $this->edit_bib_info($bnum, $code, '', '');
+    if ($this->verbose && $trans['status'] == "ERROR") {
+      echo "DELETE BIB INFO ERROR\n";
+    }
+    return $trans;
+  }
+  
+  /**
+   * replace_bib_text searches the Bib record for a field matching old field text exactly
+   * If found, it replaces it with new text
+   * 
+   * returns a Error if old text is not found in the Bib record
+   */
+  public function replace_bib_text($bnum, $old_text, $new_text) {
+    $bib = $this->get_bib_info($bnum);
+    foreach ($bib as $code => $field) {
+      if ($field['value'] == $old_text) {
+        // found the field to update
+        $this->edit_bib_info($bnum, $code, $field['marc'], $new_text);
+        if ($this->verbose) {
+          echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
+        }
+        $found = TRUE;
+        break;
+      }
+    }
+    if (!$found) {
+      if ($this->verbose) echo "FIELD TEXT NOT FOUND:" . $old_text . " in Bib: " . $bnum . "\n";
+      return "ERROR: FIELD TEXT NOT FOUND";
+    }
+  }
+  
+  public function get_bib_marc_field($bnum, $marc) {
+    $matches = array();
+    foreach(self::get_bib_info($bnum) as $code => $field) {
+      if (substr($field['marc'], 0, 3) == $marc) {
+        $matches[$code] = $field;
+      }
+    }
+    return $matches;
+  }
+  
+  /*============================================================================
+    Item Record Functions
+  ============================================================================*/
+  
+  /**
   * Retrieve MARC field information for a item record
   */
   public function get_item_info($inum) {
@@ -256,140 +409,6 @@ class TermLib {
   }
 
   /**
-   * Update a bib record with the given text
-   * You MUST enter the field code number as returned by get_bib_info()
-   */
-  public function edit_bib_info($bnum, $code, $marc, $value) {
-    $status = "SUCCESS";
-    $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
-    if ($this->verbose) echo "UPDATING BIB $bnum\n";
-    
-    if ($this->login()) {
-      if ($this->verbose) echo "SSH LOGIN ERROR\n";
-      return "SSH LOGIN ERROR";
-    }
-    
-    $trans_arr = array();
-    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
-    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
-    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
-    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
-    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
-    $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
-    $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
-    $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
-    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
-    $trans = $this->transmit_loop($trans_arr);
-
-    $trans_arr = array();
-    if (strpos($trans['result'], 'delete this field')) {
-      $trans_arr[] = array('input' => 'y', 'expect' => 'field');
-    } else if (strpos($trans['result'], 'duplicate')) {
-      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
-    }
-    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
-    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
-    $trans = $this->transmit_loop($trans_arr);
-    
-    $this->disconnect();
-    
-    return $trans;
-  }
-  
-  /**
-   * Update an item record with the given text
-   * You MUST enter the field code number as returned by get_item_info()
-   */
-  public function edit_item_info($inum, $code, $marc, $value) {
-    $status = "SUCCESS";
-    $inum = ".i" . substr(preg_replace('/[^0-9]/', '', $inum), 0, 7) . "a";
-    if ($this->verbose) echo "UPDATING ITEM $inum\n";
-    
-    if ($this->login()) {
-      if ($this->verbose) echo "SSH LOGIN ERROR\n";
-      return "SSH LOGIN ERROR";
-    }
-    
-    $trans_arr = array();
-    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
-    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
-    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
-    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
-    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'ITEM');
-    $trans_arr[] = array('input' => 'i', 'expect' => 'want to update');
-    $trans_arr[] = array('input' => $inum . PHP_EOL, 'expect' => 'Key its number');
-    $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
-    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
-    $trans = $this->transmit_loop($trans_arr);
-
-    $trans_arr = array();
-    if (strpos($trans['result'], 'delete this field')) {
-      $trans_arr[] = array('input' => 'y', 'expect' => 'field');
-    } else if (strpos($trans['result'], 'duplicate')) {
-      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
-    }
-    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
-    $trans_arr[] = array('input' => 'm', 'expect' => 'ITEM');
-    
-    $trans = $this->transmit_loop($trans_arr);
-    $this->disconnect();
-    
-    return $trans;
-  }
-  
-  /**
-   * add_bib_info inserts a new field into the Bib record as indicated
-   * by the tag, code and value
-   *
-   * Example tags:
-   * a AUTHOR        d SUBJECT       g GOV DOC #     k TOC DATA      o BIB UTIL #
-   * b ADD AUTHOR    e EDITION       h LIB HAS       l LCCN          p PUB INFO
-   * c CALL #        f VENDOR INF    i STANDARD #    n NOTE          r DESCRIPT
-   *
-   * s SERIES        w RELATED TO    z CONT'D BY
-   * t TITLE         x CONTINUES
-   * u ADD TITLE     y MISC
-   */
-  public function add_bib_info($bnum, $tag, $code, $value) {
-    $status = "SUCCESS";
-    $bnum = ".b" . substr(preg_replace('/[^0-9]/', '', $bnum), 0, 7) . "a";
-    if ($this->verbose) echo "ADDING TO BIB $bnum\n";
-    
-    if ($this->login()) {
-      if ($this->verbose) echo "SSH LOGIN ERROR\n";
-      return "SSH LOGIN ERROR";
-    }
-    
-    $trans_arr = array();
-    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
-    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
-    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
-    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
-    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'BIBLIOGRAPHIC');
-    $trans_arr[] = array('input' => 'b', 'expect' => 'want to update');
-    $trans_arr[] = array('input' => $bnum . PHP_EOL, 'expect' => 'Key its number');
-    $trans_arr[] = array('input' => 'i', 'expect' => 'new field');
-    $trans_arr[] = array('input' => $tag, 'expect' => 'MARC');
-    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
-    $trans = $this->transmit_loop($trans_arr);
-
-    $trans_arr = array();
-    if (strpos($trans['result'], 'duplicate')) {
-      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
-    }
-    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
-    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
-    
-    $trans = $this->transmit_loop($trans_arr);
-    $this->disconnect();
-    
-    return $trans;
-  }
-  
-  /**
    * add_item_info inserts a new field into the Item record as indicated
    * by the tag, code and value
    *
@@ -436,17 +455,47 @@ class TermLib {
   }
   
   /**
-   * delete_bib_info deletes the field from the Bib record
-   * as indicated by its corresponding code number
+   * Update an item record with the given text
+   * You MUST enter the field code number as returned by get_item_info()
    */
-  public function delete_bib_info($bnum, $code) {
-    $trans = $this->edit_bib_info($bnum, $code, '', '');
-    if ($this->verbose && $trans['status'] == "ERROR") {
-      echo "DELETE BIB INFO ERROR\n";
+  public function edit_item_info($inum, $code, $marc, $value) {
+    $status = "SUCCESS";
+    $inum = ".i" . substr(preg_replace('/[^0-9]/', '', $inum), 0, 7) . "a";
+    if ($this->verbose) echo "UPDATING ITEM $inum\n";
+    
+    if ($this->login()) {
+      if ($this->verbose) echo "SSH LOGIN ERROR\n";
+      return "SSH LOGIN ERROR";
     }
+    
+    $trans_arr = array();
+    $trans_arr[] = array('input' => '', 'expect' => 'MAIN MENU');
+    $trans_arr[] = array('input' => 'd', 'expect' => 'CATALOG DATABASE');
+    $trans_arr[] = array('input' => 'u', 'expect' => 'key your initials');
+    $trans_arr[] = array('input' => $this->init . PHP_EOL, 'expect' => 'key your password');
+    $trans_arr[] = array('input' => $this->init_pass . PHP_EOL, 'expect' => 'ITEM');
+    $trans_arr[] = array('input' => 'i', 'expect' => 'want to update');
+    $trans_arr[] = array('input' => $inum . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
+    $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'delete this field')) {
+      $trans_arr[] = array('input' => 'y', 'expect' => 'field');
+    } else if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
+    $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'ITEM');
+    
+    $trans = $this->transmit_loop($trans_arr);
+    $this->disconnect();
+    
     return $trans;
   }
-  
+
   /**
    * delete_item_info deletes the field from the Item record
    * as indicated by its corresponding code number
@@ -460,38 +509,13 @@ class TermLib {
   }
   
   /**
-   * replace_bib_text searches the Bib record for a field matching old field text exactly
-   * If found, it replaces it with new text
-   * 
-   * returns a Error if old text is not found in the Bib record
-   */
-  public function replace_bib_text($bnum, $old_text, $new_text) {
-    $bib = $this->get_bib_info($bnum);
-    foreach ($bib as $code => $field) {
-      if ($field['value'] == $old_text) {
-        // found the field to update
-        $this->edit_bib_info($bnum, $code, $field['marc'], $new_text);
-        if ($this->verbose) {
-          echo "UPDATED Bib:" . $bnum . " field code:" . $code . " marc:" . $field['marc'] . " with:" . $new_text . "\n";
-        }
-        $found = TRUE;
-        break;
-      }
-    }
-    if (!$found) {
-      if ($this->verbose) echo "FIELD TEXT NOT FOUND:" . $old_text . " in Bib: " . $bnum . "\n";
-      return "ERROR: FIELD TEXT NOT FOUND";
-    }
-  }
-  
-  /**
    * replace_item_text searches the Item record for a field matching old field text exactly
    * If found, it replaces it with new text
    * 
    * returns a Error if old text is not found in the Bib record
    */
   public function replace_item_text($inum, $old_text, $new_text) {
-    $item = $this->get_item_info($bnum);
+    $item = $this->get_item_info($inum);
     foreach ($item as $code => $field) {
       if ($field['value'] == $old_text) {
         // found the field to update
@@ -508,16 +532,6 @@ class TermLib {
       return "ERROR: FIELD TEXT NOT FOUND";
     }
   }
-  
-  public function get_bib_marc_field($bnum, $marc) {
-    $matches = array();
-    foreach(self::get_bib_info($bnum) as $code => $field) {
-      if (substr($field['marc'], 0, 3) == $marc) {
-        $matches[$code] = $field;
-      }
-    }
-    return $matches;
-  }
 
   public function get_item_marc_field($inum, $marc) {
     $matches = array();
@@ -528,6 +542,7 @@ class TermLib {
     }
     return $matches;
   }
+  
 } // End of class TermLib
 
 ?>
