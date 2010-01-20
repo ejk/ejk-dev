@@ -321,7 +321,15 @@ class TermLib {
     $trans_arr[] = array('input' => $inum . PHP_EOL, 'expect' => 'Key its number');
     $trans_arr[] = array('input' => $code, 'expect' => 'MARC');
     $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'delete this field')) {
+      $trans_arr[] = array('input' => 'y', 'expect' => 'field');
+    } else if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
     $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
     $trans_arr[] = array('input' => 'm', 'expect' => 'ITEM');
     
@@ -365,8 +373,13 @@ class TermLib {
     $trans_arr[] = array('input' => 'i', 'expect' => 'new field');
     $trans_arr[] = array('input' => $tag, 'expect' => 'MARC');
     $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'duplicate checking');
-    $trans_arr[] = array('input' => 'n', 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
     $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
     $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
     
@@ -406,10 +419,15 @@ class TermLib {
     $trans_arr[] = array('input' => 'i', 'expect' => 'new field');
     $trans_arr[] = array('input' => $tag, 'expect' => 'MARC');
     $trans_arr[] = array('input' => $marc . PHP_EOL, 'expect' => 'Key new data');
-    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'duplicate checking');
-    $trans_arr[] = array('input' => 'n', 'expect' => 'Key its number');
+    $trans_arr[] = array('input' => $value . PHP_EOL, 'expect' => 'field');
+    $trans = $this->transmit_loop($trans_arr);
+
+    $trans_arr = array();
+    if (strpos($trans['result'], 'duplicate')) {
+      $trans_arr[] = array('input' => 'n', 'expect' => 'field');
+    }
     $trans_arr[] = array('input' => 'q', 'expect' => 'MAKE changes');
-    $trans_arr[] = array('input' => 'm', 'expect' => 'BIBLIOGRAPHIC');
+    $trans_arr[] = array('input' => 'm', 'expect' => 'ITEM');
     
     $trans = $this->transmit_loop($trans_arr);
     $this->disconnect();
